@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trust Logistics - UK | Admin</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:Inter,Arial,sans-serif}
+body{background:#f1f5f9}
+.sticky-wrap{position:sticky;top:0;z-index:1000;box-shadow:0 8px 24px rgba(0,0,0,0.15)}
+.company-head{text-align:center;background:#ffffff;color:#0a2540;font-weight:900;font-size:15px;letter-spacing:0.6px;padding:12px;border-bottom:1px solid #e2e8f0}
+.main{max-width:1300px;margin:0 auto;padding:14px;display:flex;gap:18px;align-items:flex-start}
+.left-col{flex:1;display:flex;flex-direction:column;gap:14px}
+.map-card{background:#fff;padding:10px;border-radius:20px;border:2px solid #0a2540;box-shadow:0 8px 20px rgba(0,0,0,0.08);overflow:hidden}
+.map-square{width:100%;aspect-ratio:1/1;height:460px;border-radius:14px;overflow:hidden;border:1px solid #e2e8f0}
+#map{width:100%;height:100%}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0}
+.btn{border:0;padding:12px 16px;border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;color:#fff}
+.pause{background:#ef4444} .play{background:#16a34a} .reset{background:#0f172a} .goto{background:#2563eb;width:100%;text-align:left}
+.details{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.box{background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:12px 14px;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
+.box b{display:block;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px}
+.box span{font-size:13px;font-weight:700;color:#0a2540;word-break:break-all}
+.box.full{grid-column:1 / -1}
+.right-col{flex:0 0 360px;width:360px;display:flex;flex-direction:column;gap:10px}
+.vehicle-img-card{background:#fff;padding:8px;border-radius:20px;border:1px solid #e2e8f0;overflow:hidden;display:grid;place-items:center}
+.vehicle-img{width:100%;height:230px;object-fit:cover;border-radius:12px;display:block}
+.vbox{background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:12px 14px;box-shadow:0 2px 8px rgba(0,0,0,0.04)}
+.vbox b{display:block;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px}
+.vbox span{font-size:13px;font-weight:700;color:#0a2540}
+@media(max-width:900px){.main{flex-direction:column}.right-col{width:100%;order:-1}.map-square{height:400px}}
+</style>
+</head>
+<body>
+<div class="sticky-wrap"><div class="company-head">Trust Logistics - UK</div></div>
+<div class="main">
+<div class="left-col">
+<div class="map-card"><div class="map-square"><div id="map"></div></div></div>
+<div class="btns">
+<button class="btn pause" onclick="pauseTrip()">⏸ Pause Trip</button>
+<button class="btn play" onclick="playTrip()">▶️ Play Trip</button>
+<button class="btn reset" onclick="resetTrip()">🔄 Reset 8hr Trip</button>
+<button class="btn goto" onclick="localStorage.setItem('trust_track','yes'); localStorage.setItem('trust_user','Admin'); localStorage.setItem('trust_awb','Allan/DF/110'); location.href='./tracking.html'">Go to Allan's Page →</button>
+<button class="btn goto" style="background:#64748b" onclick="location.href='./index.html'">← Back to Login</button>
+</div>
+<div class="details">
+<div class="box"><b>REF</b><span>Allan/DF/110</span></div>
+<div class="box"><b>VIN / IMEI</b><span>H43245/IMEI/1001</span></div>
+<div class="box"><b>Progress</b><span id="progress">0.00%</span></div>
+<div class="box"><b>Paused</b><span id="paused">false</span></div>
+<div class="box"><b>Van Location</b><span id="van">55.1743, -1.8477</span></div>
+<div class="box full"><b>Route</b><span>Thornton UK [55.174,-1.8476] → Morpeth [55.1674,-1.6911]</span></div>
+</div>
+</div>
+<div class="right-col">
+<div class="vehicle-img-card"><img class="vehicle-img" src="defender.jpg" alt="Defender 110 Grey" onerror="this.onerror=null; this.src='./defender.jpg'"/></div>
+<div class="vbox"><b>Vehicle</b><span>Land Rover Defender 110</span></div>
+<div class="vbox"><b>Color</b><span>Grey</span></div>
+<div class="vbox"><b>Plates Record</b><span>76 plates recorded for sales</span></div>
+</div>
+</div>
+<script type="module">
+import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import{getFirestore,doc,setDoc,updateDoc}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+const firebaseConfig={projectId:"trustlogistics-package-dlv"};
+let db=null; try{db=getFirestore(initializeApp(firebaseConfig));}catch(e){}
+const THORNTON=[55.174,-1.8476],MORPETH=[55.1674,-1.6911];
+const map=L.map('map',{zoomControl:false}).setView([55.17,-1.77],11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+let route=[THORNTON,MORPETH],marker=null,outer=null,inner=null;
+const icon=L.divIcon({html:"🚐",className:"",iconSize:[32,32]});
+async function getRoute(){try{const r=await fetch(`https://router.project-osrm.org/route/v1/driving/${THORNTON[1]},${THORNTON[0]};${MORPETH[1]},${MORPETH[0]}?overview=full&geometries=geojson`);const j=await r.json();if(j.routes&&j.routes[0])route=j.routes[0].geometry.coordinates.map(c=>[c[1],c[0]]);}catch(e){}if(outer)map.removeLayer(outer);if(inner)map.removeLayer(inner);outer=L.polyline(route,{color:"#fff",weight:7}).addTo(map);inner=L.polyline(route,{color:"#4285F4",weight:4}).addTo(map);map.fitBounds(outer.getBounds(),{padding:[20,20]});}
+function interp(rt,t){const tot=rt.length-1,idx=t*tot,i=Math.floor(idx),f=idx-i;if(i>=tot)return rt[tot];const a=rt[i],b=rt[i+1];return[a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f];}
+async function load(){await getRoute();let s=localStorage.getItem('tl_shared_start_thornton');if(!s){s=Date.now();localStorage.setItem('tl_shared_start_thornton',s);}let isPaused=localStorage.getItem('tl_isPaused')==='true';let acc=parseInt(localStorage.getItem('tl_accPause')||'0');let pausedAt=parseInt(localStorage.getItem('tl_pausedAt')||'0');let start=parseInt(s);let elapsed=isPaused?(pausedAt-start-acc):(Date.now()-start-acc);let p=Math.min(elapsed/(7.2*60*60*1000),0.998);let pos=interp(route,p);if(!marker)marker=L.marker(pos,{icon}).addTo(map);else marker.setLatLng(pos);document.getElementById('progress').innerText=p.toFixed(4)+'%';document.getElementById('paused').innerText=isPaused;document.getElementById('van').innerText=pos[0].toFixed(4)+', '+pos[1].toFixed(4);}
+window.pauseTrip=async()=>{localStorage.setItem('tl_isPaused','true');localStorage.setItem('tl_pausedAt',Date.now());if(db){try{await setDoc(doc(db,"packages","ALLAN_DF_110_SHARED_TRIP_THORNTON_MORPETH"),{isPaused:true,pausedAt:Date.now()},{merge:true});}catch(e){}}location.reload();};
+window.playTrip=async()=>{let pausedAt=parseInt(localStorage.getItem('tl_pausedAt')||'0');let acc=parseInt(localStorage.getItem('tl_accPause')||'0');if(pausedAt)localStorage.setItem('tl_accPause',acc+(Date.now()-pausedAt));localStorage.setItem('tl_isPaused','false');if(db){try{await updateDoc(doc(db,"packages","ALLAN_DF_110_SHARED_TRIP_THORNTON_MORPETH"),{isPaused:false,accumulatedPause:parseInt(localStorage.getItem('tl_accPause')||'0')});}catch(e){}}location.reload();};
+window.resetTrip=async()=>{localStorage.setItem('tl_shared_start_thornton',Date.now());localStorage.setItem('tl_accPause','0');localStorage.setItem('tl_isPaused','false');localStorage.removeItem('tl_pausedAt');if(db){try{await setDoc(doc(db,"packages","ALLAN_DF_110_SHARED_TRIP_THORNTON_MORPETH"),{startTime:Date.now(),accumulatedPause:0,isPaused:false,pausedAt:0});}catch(e){}}location.reload();};
+load();setInterval(load,2000);
+</script>
+</body>
+</html>
